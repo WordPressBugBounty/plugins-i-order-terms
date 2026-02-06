@@ -17,7 +17,7 @@ if ( !class_exists( 'I_Order_Terms' ) ) {
 class I_Order_Terms
 {
 	const PLUGIN_NAME = 'I Order Terms';
-	const PLUGIN_VERSION = '1.5.0';
+	const PLUGIN_VERSION = '1.5.3';
 	const WP_MIN_VERSION = '3.5';
 	const PLUGIN_BASENAME = 'i-order-terms/i-order-terms.php';
 	const PLUGIN_OPTIONS_PAGE = 'iorderterms_general';
@@ -27,12 +27,12 @@ class I_Order_Terms
 	/** @var string Plugin URL */
 	private $plugin_url;
 
-	/** @var array List of notices for admin users */
-	private $notices = array();
-	/** @var array Taxonomies list */
-	private $taxonomies = array();
-	/** @var array Taxonomies that require custom sorting */
-	private $taxonomies_registered = array();
+	/** @var string[] List of notices for admin users */
+	private $notices = [];
+	/** @var string[] Taxonomies list */
+	private $taxonomies = [];
+	/** @var string[] Taxonomies that require custom sorting */
+	private $taxonomies_registered = [];
 
 
 	/**
@@ -210,7 +210,7 @@ class I_Order_Terms
 			$this->taxonomies = $taxonomies;
 		}
 
-		// remove dups
+		// remove duplicates
 		$this->taxonomies = array_unique( $this->taxonomies );
 	} // end after_setup_theme
 
@@ -230,7 +230,7 @@ class I_Order_Terms
 		// default sorting is to use custom order
 		if ( isset( $args['orderby'] ) && $args['orderby'] !== 'name' ) return $clauses;
 
-		// accept only single taxonomy queries & only if taxonomy is registered for custom sorting
+		// accept only single taxonomy queries and only if taxonomy is registered for custom sorting
 		if ( /* count( $taxonomies ) !== 1 || */ !in_array( $taxonomies[0], $this->taxonomies ) ) return $clauses;
 
 		// user sorting by a column
@@ -418,14 +418,14 @@ class I_Order_Terms
 
 				<label for="iorderterms-ctrl-all">
 					<input id="iorderterms-ctrl-all" type="checkbox" onclick="iOrderTermsToggle(this)" />
-					<span><?php echo esc_html_e( 'Check/uncheck all', 'i-order-terms' ); ?></span>
+					<span><?php esc_html_e( 'Check/uncheck all', 'i-order-terms' ); ?></span>
 					<hr />
 				</label>
 				<br />
 				<script>
-				function iOrderTermsToggle(source) {
-					var checkboxes = document.getElementsByName('iorderterms_general[taxonomies-sort][]');
-					for ( var i = 0; i < checkboxes.length; i++) {
+				function iOrderTermsToggle( source ) {
+					var checkboxes = document.getElementsByName( 'iorderterms_general[taxonomies-sort][]' );
+					for ( var i = 0; i < checkboxes.length; i++ ) {
 						checkboxes[i].checked = source.checked;
 					}
 				}
@@ -436,7 +436,7 @@ class I_Order_Terms
 
 			// List taxonomies
 			foreach ( $taxonomies as $taxonomy ) {
-				if ( $taxonomy->_builtin && in_array( $taxonomy->name, array( 'nav_menu' ) ) ) {
+				if ( $taxonomy->_builtin && $taxonomy->name === 'nav_menu' ) {
 					continue;
 				}
 
@@ -493,18 +493,23 @@ class I_Order_Terms
 		if ( empty( $_GET['orderby'] ) && !empty( $taxonomy ) && in_array( $taxonomy, $this->taxonomies ) ) {
 
 			// Include minified scripts and styles when script debug mode is off
-			$min_sufix = ( defined( 'SCRIPT_DEBUG' ) && SCRIPT_DEBUG ) ? '' : '.min';
+			$min_suffix = ( defined( 'SCRIPT_DEBUG' ) && SCRIPT_DEBUG ) ? '' : '.min';
 
 			// Custom styles
-			wp_register_style( 'iorderterms_custom_order', $this->plugin_url . '/css/admin-i-order-terms' . $min_sufix . '.css', false, self::PLUGIN_VERSION );
+			wp_register_style( 'iorderterms_custom_order', $this->plugin_url . '/css/admin-i-order-terms' . $min_suffix . '.css', false, self::PLUGIN_VERSION );
 			wp_enqueue_style( 'iorderterms_custom_order' );
 
 			// WP scripts
 			wp_enqueue_script( 'jquery-ui-sortable' );
 
 			// Custom scripts
-			wp_register_script( 'iorderterms_custom_order', $this->plugin_url . '/js/admin-i-order-terms' . $min_sufix . '.js', array( 'jquery-ui-sortable' ), self::PLUGIN_VERSION );
+			wp_register_script( 'iorderterms_custom_order', $this->plugin_url . '/js/admin-i-order-terms' . $min_suffix . '.js', array( 'jquery-ui-sortable' ), self::PLUGIN_VERSION );
 			wp_enqueue_script( 'iorderterms_custom_order' );
+
+			// Localization + custom data
+			wp_localize_script( 'iorderterms_custom_order', 'iOrderTerms', [
+				'nonce' => wp_create_nonce( 'i-order-terms' ),
+			] );
 		}
 	} // end admin_assets
 
@@ -544,7 +549,7 @@ class I_Order_Terms
 	 * @param  string $status       Response status.
 	 * @param  string $message      Textual message for user.
 	 * @param  bool   $force_reload Should we force terms (page) reload.
-	 * @return object
+	 * @return string
 	 */
 	private function ajax_response( $status, $message, $force_reload = false )
 	{
@@ -558,7 +563,7 @@ class I_Order_Terms
 			'force_reload' => $force_reload,
 		);
 
-		return json_encode( $data );
+		return wp_json_encode( $data );
 	} // end ajax_response
 
 	/**
@@ -572,6 +577,10 @@ class I_Order_Terms
 			exit( $this->ajax_response( 'error', __( 'User does not have permission to perform this action.', 'i-order-terms' ) ) );
 		}
 
+		// Verify nonce for CSRF protection
+		if ( !check_ajax_referer( 'i-order-terms', 'nonce', false ) ) {
+			exit( $this->ajax_response( 'error', __( 'Security check failed. Please reload the page and try again.', 'i-order-terms' ) ) );
+		}
 
 		$taxonomy = filter_input( INPUT_POST, 'taxonomy', FILTER_SANITIZE_STRING );
 		$term_id = filter_input( INPUT_POST, 'term_id', FILTER_SANITIZE_NUMBER_INT );
